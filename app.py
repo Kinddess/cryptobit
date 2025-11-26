@@ -1,22 +1,28 @@
-# app.py - Flask backend for CryptoBit Coin Price Tracker
-
+# app.py - Enhanced CryptoBit Live Tracker
 from flask import Flask, render_template, jsonify
-import os
+import threading
 import time
 import datetime
 import json
 import numpy as np
 import requests
 import pandas as pd
-import threading  # For background data update
+from collections import deque
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
 # ==================== CONFIG ====================
 CHECK_INTERVAL = 15  # seconds
-SAVE_LOGS = True
-
-# Coins to track
+MAX_POINTS_1M = 600  # 10 hours of 1m data
+MAX_POINTS_5M = 288  # 24h of 5m
+MAX_POINTS_15M = 200
+MAX_POINTS_1H = 168  # 7 days
 COINS = {
     'BTC': 'bitcoin',
     'ETH': 'ethereum',
@@ -25,220 +31,254 @@ COINS = {
     'BNB': 'binancecoin'
 }
 
-data = {coin: {'prices_1m': [], 'times_1m': [], 'prices_5m': [], 'times_5m': [],
-               'prices_15m': [], 'times_15m': [], 'prices_1h': [], 'times_1h': [],
-               'volumes_1m': [],  # For volume history
-               'last_signal': "", 'score': 0} for coin in COINS}
 
-latest_data = {}  # To store latest fetched data for API
+@dataclass
+class CoinData:
+    symbol: str
+    prices_1m: deque = None
+    times_1m: deque = None
+    volumes_1m: deque = None
 
-def get_prices():
+    def __post_init__(self):
+        self.prices_1m = deque(maxlen=MAX_POINTS_1M)
+        self.times_1m = deque(maxlen=MAX_POINTS_1M)
+        self.volumes_1m = deque(maxlen=MAX_POINTS_1M)
+
+        # Higher timeframes (resampled properly)
+        self.prices_5m = deque(maxlen=MAX_POINTS_5M)
+        self.prices_15m = deque(maxlen=MAX_POINTS_15M)
+        self.prices_1h = deque(maxlen=MAX_POINTS_1H)
+        self.times_5m = deque(maxlen=MAX_POINTS_5M)
+        self.times_15m = deque(maxlen=MAX_POINTS_15M)
+        self.times_1h = deque(maxlen=MAX_POINTS_1H)
+
+    def append_1m(self, price: float, volume: float):
+        now = datetime.datetime.now()
+        self.prices_1m.append(price)
+        self.times_1m.append(now)
+        self.volumes_1m.append(volume)
+
+        # Proper time-based resampling
+        minutes = now.minute
+        if len(self.prices_1m) >= 5 and minutes % 5 == 0 and (
+                len(self.prices_5m) == 0 or self.times_5m[-1].minute != minutes):
+            self.prices_5m.append(price)
+            self.times_5m.append(now)
+        if minutes % 15 == 0 and (len(self.prices_15m) == 0 or self.times_15m[-1].minute != minutes):
+            self.prices_15m.append(price)
+            self.times_15m.append(now)
+        if now.hour % 1 == 0 and minutes < 5 and (len(self.prices_1h) == 0 or self.times_1h[-1].hour != now.hour):
+            self.prices_1h.append(price)
+            self.times_1h.append(now)
+
+
+# Global state (thread-safe with lock)
+data_store = {coin: CoinData(coin) for coin in COINS}
+latest_response = {}
+data_lock = threading.Lock()
+
+
+def get_prices_safe():
     ids = ','.join(COINS.values())
     try:
+        headers = {'User-Agent': 'CryptoBitTracker/1.0'}
         r = requests.get(
-            f"https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={ids}",
+            f"https://api.coingecko.com/api/v3/coins/markets",
+            params={"vs_currency": "usd", "ids": ids, "price_change_percentage": "24h"},
+            headers=headers,
             timeout=10
         )
-        data_json = r.json()
-        prices = {}
-        changes = {}
-        volumes = {}
-        for item in data_json:
-            symbol = item['symbol'].upper()
-            if symbol in COINS:
-                prices[symbol] = item.get('current_price')
-                changes[symbol] = item.get('price_change_percentage_24h', 0)
-                volumes[symbol] = item.get('total_volume', 0)
-        return prices, changes, volumes
-    except:
-        return {}, {}, {}
+        if r.status_code == 429:
+            logger.warning("Rate limited by CoinGecko")
+            time.sleep(60)
+            return {}, {}
+        return {item['symbol'].upper(): (item['current_price'], item.get('price_change_percentage_24h', 0),
+                                         item.get('total_volume', 0))
+                for item in r.json() if item['symbol'].upper() in COINS}
+    except Exception as e:
+        logger.error(f"Price fetch error: {e}")
+        return {}
 
-def get_fear_greed():
+
+def get_fear_greed_safe():
     try:
-        r = requests.get("https://api.alternative.me/fng/", timeout=8)
+        r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=8)
         return int(r.json()["data"][0]["value"])
     except:
         return 50
 
-def rsi(prices, period=14):
+
+# Fixed RSI (Standard Welles Wilder formula)
+def calculate_rsi(prices: List[float], period: int = 14) -> float:
     if len(prices) < period + 1:
-        return 50
+        return 50.0
     deltas = np.diff(prices)
-    gains = deltas[-period:]
-    losses = -deltas[-period:]
-    gain = np.mean(gains[gains > 0]) if np.any(gains > 0) else 0
-    loss = np.mean(losses[losses > 0]) if np.any(losses > 0) else 0.001
-    if loss == 0: return 100
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+    up = deltas[-period:]
+    down = -deltas[-period:]
+    up = np.append([0], up[up > 0])
+    down = np.append([0], down[down > 0])
 
-def ema(prices, period):
-    if len(prices) == 0: return []
-    return pd.Series(prices).ewm(span=period, adjust=False).mean().tolist()
+    if len(up) <= 1 or len(down) <= 1:
+        return 50.0
 
-def predict_signal(coin_data):
+    avg_gain = np.mean(up[up > 0]) if np.any(up > 0) else 0
+    avg_loss = np.mean(down[down > 0]) if np.any(down > 0) else 0.000001
+
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return float(100 - (100 / (1 + rs)))
+
+
+def ema_series(prices: List[float], span: int):
+    if not prices:
+        return []
+    return pd.Series(prices).ewm(span=span, adjust=False).mean().tolist()
+
+
+def generate_signal(coin_data: CoinData):
+    p1m = list(coin_data.prices_1m)
+    p5m = list(coin_data.prices_5m)
+    p15m = list(coin_data.prices_15m)
+    p1h = list(coin_data.prices_1h)
+    vol = list(coin_data.volumes_1m)
+
+    if len(p1m) < 100:
+        return "Warming Up", 0, "text-secondary", []
+
     score = 0
     reasons = []
 
-    prices_1m = coin_data['prices_1m']
-    prices_5m = coin_data['prices_5m']
-    prices_15m = coin_data['prices_15m']
-    prices_1h = coin_data['prices_1h']
-    volumes_1m = coin_data['volumes_1m']
+    # RSI Multi-timeframe
+    rsi1 = calculate_rsi(p1m, 14)
+    rsi5 = calculate_rsi(p5m, 14) if len(p5m) >= 20 else rsi1
+    rsi15 = calculate_rsi(p15m, 14) if len(p15m) >= 20 else rsi1
+    rsi60 = calculate_rsi(p1h, 14) if len(p1h) >= 20 else rsi1
 
-    if len(prices_1m) < 60:
-        return "Collecting data...", 0, "text-warning", []  # Bootstrap yellow
+    if rsi1 < 25:
+        score += 25; reasons.append("1m Extreme Oversold")
+    elif rsi1 < 30:
+        score += 18; reasons.append("1m Oversold")
+    if rsi1 > 75: score -= 22; reasons.append("1m Overbought")
+    if rsi60 < 40: score += 15; reasons.append("1h Bullish Structure")
 
-    # Multi-timeframe RSI
-    rsi_1m = rsi(prices_1m)
-    rsi_5m = rsi(prices_5m) if len(prices_5m) > 14 else rsi_1m
-    rsi_15m = rsi(prices_15m) if len(prices_15m) > 14 else rsi_1m
-    rsi_1h = rsi(prices_1h) if len(prices_1h) > 14 else rsi_1m
+    # EMA Trend
+    if len(p1m) >= 50:
+        ema12 = ema_series(p1m, 12)
+        ema26 = ema_series(p1m, 26)
+        if ema12 and ema26 and ema12[-1] > ema26[-1]:
+            score += 20
+            reasons.append("EMA Bullish")
+        else:
+            score -= 20
+            reasons.append("EMA Bearish")
 
-    if rsi_1m < 27: score += 20; reasons.append("1m RSI Oversold")
-    if rsi_1m > 73: score -= 18; reasons.append("1m RSI Overbought")
-    if rsi_5m < 30: score += 15; reasons.append("5m RSI Support")
-    if rsi_15m < 35: score += 12; reasons.append("15m RSI Bullish")
-    if rsi_1h < 40: score += 10; reasons.append("1h RSI Strong Buy Zone")
-    if rsi_1h > 70: score -= 15; reasons.append("1h RSI Overbought")
+    # Volume Surge
+    if len(vol) >= 20:
+        recent_vol = np.mean(vol[-10:])
+        prev_vol = np.mean(vol[-20:-10])
+        if recent_vol > prev_vol * 1.8:
+            price_change = (p1m[-1] - p1m[-10]) / p1m[-10]
+            if price_change > 0.01:
+                score += 18;
+                reasons.append("Volume Surge Up")
+            elif price_change < -0.01:
+                score -= 20;
+                reasons.append("Distribution Risk")
 
-    # Multi-timeframe EMA
-    try:
-        ema12_1m = ema(prices_1m, 12)
-        ema26_1m = ema(prices_1m, 26)
-        ema12_15m = ema(prices_15m, 12) if len(prices_15m) > 26 else ema12_1m
-        ema26_15m = ema(prices_15m, 26) if len(prices_15m) > 26 else ema26_1m
+    # Fear & Greed Boost
+    fg = get_fear_greed_safe()
+    if fg < 20:
+        score += 30; reasons.append(f"Extreme Fear ({fg})")
+    elif fg > 80:
+        score -= 20; reasons.append(f"Extreme Greed ({fg})")
 
-        if ema12_1m > ema26_1m: score += 18; reasons.append("1m Golden Cross")
-        else: score -= 18; reasons.append("1m Death Cross")
-        if ema12_15m > ema26_15m: score += 14; reasons.append("15m Bull Trend")
-    except: pass
+    prob = min(98, max(10, abs(score)))
 
-    # Momentum across frames
-    if len(prices_1m) >= 12:
-        mom_1m = (prices_1m[-1] / prices_1m[-12] - 1) * 100
-        if mom_1m > 3.5: score -= 25; reasons.append("1m Pump Risk")
-        if mom_1m < -3.5: score += 20; reasons.append("1m Bounce Likely")
-
-    if len(prices_15m) >= 4:
-        mom_15m = (prices_15m[-1] / prices_15m[-4] - 1) * 100
-        if mom_15m > 5: score -= 20; reasons.append("15m Overextended")
-        if mom_15m < -5: score += 15; reasons.append("15m Oversold")
-
-    # Volume analysis
-    if len(volumes_1m) >= 10:
-        avg_volume = np.mean(volumes_1m[-10:-1])
-        current_volume = volumes_1m[-1]
-        volume_change = (current_volume - avg_volume) / avg_volume if avg_volume > 0 else 0
-        price_change_short = (prices_1m[-1] - prices_1m[-5]) / prices_1m[-5] if len(prices_1m) >= 5 else 0
-        if volume_change > 0.2 and price_change_short > 0:
-            score += 15; reasons.append("Rising Volume + Price")
-        elif volume_change > 0.2 and price_change_short < 0:
-            score -= 15; reasons.append("Rising Volume + Dump")
-
-    fg = get_fear_greed()
-    if fg < 20: score += 30; reasons.append("Market Extreme Fear")
-    if fg > 90: score -= 25; reasons.append("Market Extreme Greed")
-
-    prob = min(99, abs(score))
-    if score >= 65:
-        return "STRONG BUY", prob, "text-success", reasons  # Green
-    elif score >= 35:
-        return "Bullish", prob, "text-info", reasons  # Cyan
-    elif score <= -65:
-        return "STRONG SELL", prob, "text-danger", reasons  # Red
-    elif score <= -35:
-        return "Bearish", prob, "text-purple", reasons  # Magenta
+    if score >= 60:
+        return "STRONG BUY", prob, "text-success fw-bold", reasons[:3]
+    elif score >= 30:
+        return "BUY", prob, "text-info", reasons[:3]
+    elif score <= -60:
+        return "STRONG SELL", prob, "text-danger fw-bold", reasons[:3]
+    elif score <= -30:
+        return "SELL", prob, "text-warning", reasons[:3]
     else:
-        return "Neutral", 25, "text-warning", reasons  # Yellow
+        return "NEUTRAL", 30, "text-muted", reasons[:2]
 
-def update_data():
+
+def background_updater():
     while True:
-        prices, changes, volumes = get_prices()
-        fg = get_fear_greed()
+        start_time = time.time()
+        prices_data = get_prices_safe()
+        fg_index = get_fear_greed_safe()
+
         dashboard = []
         chart_data = {}
-        for coin in COINS:
-            price = prices.get(coin)
-            if price is None:
+
+        for symbol, coin_data in data_store.items():
+            if symbol not in prices_data:
                 continue
+            price, change_24h, volume = prices_data[symbol]
+            coin_data.append_1m(price, volume)
 
-            volume = volumes.get(coin, 0)
-            coin_data = data[coin]
-            coin_data['prices_1m'].append(price)
-            coin_data['times_1m'].append(datetime.datetime.now().isoformat())
-            coin_data['volumes_1m'].append(volume)
-            if len(coin_data['prices_1m']) > 500:
-                coin_data['prices_1m'].pop(0)
-                coin_data['times_1m'].pop(0)
-                coin_data['volumes_1m'].pop(0)
-
-            # Resample
-            if len(coin_data['prices_1m']) % 5 == 0:
-                coin_data['prices_5m'].append(price)
-                coin_data['times_5m'].append(datetime.datetime.now().isoformat())
-                if len(coin_data['prices_5m']) > 200:
-                    coin_data['prices_5m'].pop(0)
-                    coin_data['times_5m'].pop(0)
-            if len(coin_data['prices_1m']) % 15 == 0:
-                coin_data['prices_15m'].append(price)
-                coin_data['times_15m'].append(datetime.datetime.now().isoformat())
-                if len(coin_data['prices_15m']) > 100:
-                    coin_data['prices_15m'].pop(0)
-                    coin_data['times_15m'].pop(0)
-            if len(coin_data['prices_1m']) % 60 == 0:
-                coin_data['prices_1h'].append(price)
-                coin_data['times_1h'].append(datetime.datetime.now().isoformat())
-                if len(coin_data['prices_1h']) > 50:
-                    coin_data['prices_1h'].pop(0)
-                    coin_data['times_1h'].pop(0)
-
-            msg, prob, color_class, reasons = predict_signal(coin_data)
+            signal, prob, color, reasons = generate_signal(coin_data)
 
             dashboard.append({
-                'coin': coin,
-                'price': price,
-                'change': changes[coin],
-                'signal': msg,
-                'prob': prob,
-                'color_class': color_class,
-                'reasons': ', '.join(reasons[:2])
+                "coin": symbol,
+                "price": round(price, 6),
+                "change": round(change_24h, 2),
+                "signal": signal,
+                "prob": prob,
+                "color_class": color,
+                "reasons": " • ".join(reasons) if reasons else "Analyzing..."
             })
 
-            # Chart data
-            prices_1m = coin_data['prices_1m'][-100:]  # Last 100 for performance
-            labels = list(range(len(prices_1m)))
-            ema_fast = ema(prices_1m, 12)
-            ema_slow = ema(prices_1m, 26)
-            chart_data[coin] = {
-                'labels': labels,
-                'prices': prices_1m,
-                'ema_fast': ema_fast,
-                'ema_slow': ema_slow
+            # Chart data (last 150 points)
+            prices = list(coin_data.prices_1m)[-150:]
+            if len(prices) > 26:
+                ema_fast = ema_series(prices, 12)
+                ema_slow = ema_series(prices, 26)
+            else:
+                ema_fast = ema_slow = []
+
+            chart_data[symbol] = {
+                "labels": list(range(len(prices))),
+                "prices": prices,
+                "ema_fast": ema_fast,
+                "ema_slow": ema_slow
             }
 
-        latest_data['dashboard'] = dashboard
-        latest_data['fg'] = fg
-        latest_data['chart_data'] = chart_data
-        latest_data['timestamp'] = datetime.datetime.now().isoformat()
+        response = {
+            "dashboard": dashboard,
+            "chart_data": chart_data,
+            "fg": fg_index,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
 
-        if SAVE_LOGS:
-            with open("multi_coin_log.json", "a") as f:
-                json.dump(latest_data, f)
-                f.write("\n")
+        with data_lock:
+            global latest_response
+            latest_response = response
 
-        time.sleep(CHECK_INTERVAL)
+        elapsed = time.time() - start_time
+        sleep_time = max(0, CHECK_INTERVAL - elapsed)
+        time.sleep(sleep_time)
 
-# Start background thread for data update
-threading.Thread(target=update_data, daemon=True).start()
+
+# Start background thread
+threading.Thread(target=background_updater, daemon=True).start()
+
 
 @app.route('/')
 def index():
     return render_template('index.html', coins=list(COINS.keys()))
 
+
 @app.route('/api/data')
 def api_data():
-    return jsonify(latest_data)
+    with data_lock:
+        return jsonify(latest_response or {"dashboard": [], "fg": 50, "timestamp": None})
+
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
