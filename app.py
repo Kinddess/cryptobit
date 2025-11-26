@@ -152,12 +152,17 @@ def predict_signal(coin_data):
     else:
         return "Neutral", 25, "text-warning", reasons  # Yellow
 
+# app.py - Updated backend (only small changes)
+# Keep your previous app.py but replace the update_data() function with this:
+
 def update_data():
     while True:
         prices, changes, volumes = get_prices()
         fg = get_fear_greed()
         dashboard = []
         chart_data = {}
+        signals_log = []  # For live signals
+
         for coin in COINS:
             price = prices.get(coin)
             if price is None:
@@ -165,15 +170,17 @@ def update_data():
 
             volume = volumes.get(coin, 0)
             coin_data = data[coin]
+            old_price = coin_data['prices_1m'][-1] if coin_data['prices_1m'] else price
             coin_data['prices_1m'].append(price)
             coin_data['times_1m'].append(datetime.datetime.now().isoformat())
             coin_data['volumes_1m'].append(volume)
+
             if len(coin_data['prices_1m']) > 500:
                 coin_data['prices_1m'].pop(0)
                 coin_data['times_1m'].pop(0)
                 coin_data['volumes_1m'].pop(0)
 
-            # Resample
+            # Resample (same as before)
             if len(coin_data['prices_1m']) % 5 == 0:
                 coin_data['prices_5m'].append(price)
                 coin_data['times_5m'].append(datetime.datetime.now().isoformat())
@@ -195,6 +202,18 @@ def update_data():
 
             msg, prob, color_class, reasons = predict_signal(coin_data)
 
+            # Detect new STRONG signal
+            if "STRONG" in msg and msg != coin_data.get('last_signal', ''):
+                signals_log.append({
+                    'coin': coin,
+                    'signal': msg,
+                    'price': price,
+                    'time': datetime.datetime.now().isoformat(),
+                    'prob': prob
+                })
+
+            coin_data['last_signal'] = msg
+
             dashboard.append({
                 'coin': coin,
                 'price': price,
@@ -205,27 +224,24 @@ def update_data():
                 'reasons': ', '.join(reasons[:2])
             })
 
-            # Chart data
-            prices_1m = coin_data['prices_1m'][-100:]  # Last 100 for performance
-            labels = list(range(len(prices_1m)))
+            # Chart data with last 150 points for smoothness
+            prices_1m = coin_data['prices_1m'][-150:]
             ema_fast = ema(prices_1m, 12)
             ema_slow = ema(prices_1m, 26)
+
             chart_data[coin] = {
-                'labels': labels,
-                'prices': prices_1m,
+                'prices: prices_1m,
                 'ema_fast': ema_fast,
-                'ema_slow': ema_slow
+                'ema_slow': ema_slow,
+                'current_price': price,
+                'last_update': datetime.datetime.now().strftime("%H:%M:%S")
             }
 
         latest_data['dashboard'] = dashboard
         latest_data['fg'] = fg
         latest_data['chart_data'] = chart_data
+        latest_data['signals'] = signals_log[-5:]  # Last 5 signals
         latest_data['timestamp'] = datetime.datetime.now().isoformat()
-
-        if SAVE_LOGS:
-            with open("multi_coin_log.json", "a") as f:
-                json.dump(latest_data, f)
-                f.write("\n")
 
         time.sleep(CHECK_INTERVAL)
 
