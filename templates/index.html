@@ -3,16 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CryptoBit Pro • Live Trading Dashboard</title>
+  <title>CryptoBit Pro - Live Multi-Coin Tracker</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #0d1117;
       --card: #161b22;
       --border: #30363d;
-      --text: #e6edf3;
       --primary: #00ff9d;
       --success: #39d353;
       --danger: #f85149;
@@ -22,38 +21,38 @@
     }
     body {
       background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-      color: var(--text);
-      font-family: 'JetBrains Mono', monospace;
+      color: #e6edf3;
+      font-family: 'Rajdhani', sans-serif;
       min-height: 100vh;
       margin: 0;
     }
     h1 {
       font-family: 'Orbitron', sans-serif;
-      font-size: 4.2rem;
+      font-weight: 900;
+      font-size: 4rem;
       text-align: center;
-      background: linear-gradient(90deg, #00ff9d, #00c3ff, #7c3aed);
+      background: linear-gradient(90deg, #00ff9d, #00c3ff);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      margin: 2rem 0 0.5rem;
-      text-shadow: 0 0 50px rgba(0, 255, 157, 0.4);
+      margin: 2rem 0 1rem;
+      text-shadow: 0 0 40px rgba(0, 255, 157, 0.4);
     }
-    .subtitle { text-align: center; font-size: 1.3rem; opacity: 0.8; margin-bottom: 2rem; }
-    .live-badge {
+    .live-pulse {
       position: absolute;
-      top: 16px;
+      top: 15px;
       right: 20px;
       background: #f85149;
       color: white;
-      padding: 8px 16px;
+      padding: 6px 14px;
       border-radius: 30px;
+      font-size: 0.85rem;
       font-weight: bold;
-      font-size: 0.9rem;
       animation: pulse 2s infinite;
       z-index: 10;
     }
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.8); }
-      70% { box-shadow: 0 0 0 14px rgba(248, 81, 73, 0); }
+      70% { box-shadow: 0 0 0 12px rgba(248, 81, 73, 0); }
       100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0); }
     }
     .card {
@@ -61,63 +60,77 @@
       border: 1px solid var(--border);
       border-radius: 20px;
       overflow: hidden;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-      transition: 0.4s;
+      transition: all 0.4s ease;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     }
-    .card:hover { transform: translateY(-10px); }
+    .card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+    .chart-container {
+      position: relative;
+      height: 460px;
+      padding: 20px;
+    }
     .price-display {
       font-family: 'Orbitron', sans-serif;
-      font-size: 3rem;
+      font-size: 2.8rem;
       font-weight: 900;
       background: linear-gradient(45deg, #00ff9d, #00c3ff);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
     .signal-badge {
-      padding: 12px 24px;
+      padding: 10px 20px;
       border-radius: 50px;
       font-weight: 700;
-      font-size: 1.3rem;
+      font-size: 1.2rem;
+      letter-spacing: 1px;
       animation: glow 3s ease-in-out infinite alternate;
     }
     @keyframes glow {
-      from { box-shadow: 0 0 20px currentColor; }
-      to { box-shadow: 0 0 40px currentColor; }
+      from { box-shadow: 0 0 15px currentColor; }
+      to { box-shadow: 0 0 30px currentColor; }
     }
-    .chart-container { height: 500px; position: relative; }
-    .rsi-container { height: 150px; margin-top: 20px; }
-    .macd-container { height: 150px; margin-top: 20px; }
     .nav-tabs .nav-link {
       color: #8b949e;
       background: #21262d;
       border-radius: 15px 15px 0 0;
-      margin: 0 6px;
-      padding: 14px 32px;
+      margin: 0 5px;
+      padding: 14px 30px;
       font-weight: 600;
     }
     .nav-tabs .nav-link.active {
       background: linear-gradient(90deg, var(--primary), #00c3ff);
       color: white;
     }
-    .table { background: var(--card); border-radius: 16px; overflow: hidden; }
-    .table th { background: #1e293b; color: #58a6ff; }
-    .price-flash-up { color: #39d353 !important; transition: color 0.7s; }
-    .price-flash-down { color: #f85149 !important; transition: color 0.7s; }
-    .bb-fill { opacity: 0.15; }
-    @media (max-width: 992px) {
-      h1 { font-size: 3rem; }
-      .chart-container { height: 400px; }
-      .price-display { font-size: 2.4rem; }
+    .table {
+      background: #161b22;
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .table th {
+      background: #1e293b;
+      color: #58a6ff;
+      font-weight: 700;
+    }
+    .macd-histogram {
+      opacity: 0.6;
+    }
+    .price-flash-up { color: #39d353 !important; transition: color 0.6s; }
+    .price-flash-down { color: #f85149 !important; transition: color 0.6s; }
+    #last-update { font-size: 0.9rem; opacity: 0.7; }
+    @media (max-width: 768px) {
+      h1 { font-size: 2.8rem; }
+      .chart-container { height: 380px; }
+      .price-display { font-size: 2.2rem; }
     }
   </style>
 </head>
 <body>
   <div class="container-fluid px-4 py-3">
     <h1>CryptoBit Pro</h1>
-    <p class="subtitle">RSI • Bollinger Bands • MACD • EMA • Live Multi-Coin Signals</p>
+    <p class="text-center text-muted mb-4">Multi-Timeframe + MACD + RSI + Volume Signals</p>
 
     <!-- Tabs -->
-    <ul class="nav nav-tabs justify-content-center mb-5" id="coinTabs">
+    <ul class="nav nav-tabs justify-content-center mb-4" id="coinTabs">
       {% for coin in coins %}
         <li class="nav-item">
           <button class="nav-link {% if loop.first %}active{% endif %}"
@@ -132,40 +145,29 @@
     <div class="tab-content">
       {% for coin in coins %}
       <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="tab-{{ coin }}">
-        <div class="card position-relative mb-5">
-          <div class="live-badge">LIVE</div>
-          <div class="card-body p-5">
+        <div class="card position-relative mb-4">
+          <div class="live-pulse">LIVE</div>
+          <div class="card-body p-4">
             <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2 class="mb-0 text-white fw-bold">{{ coin }}/USD</h2>
+              <h2 class="mb-0 text-white">{{ coin }}/USD</h2>
               <div class="text-end">
                 <div class="price-display" id="{{ coin }}-price">$0.00</div>
-                <div id="{{ coin }}-change" class="fs-4"></div>
+                <div id="{{ coin }}-change" class="fs-5"></div>
               </div>
             </div>
 
-            <!-- Main Price Chart with Bollinger Bands -->
             <div class="chart-container">
-              <canvas id="{{ coin }}-chart-price"></canvas>
-            </div>
-
-            <!-- RSI Panel -->
-            <div class="rsi-container">
-              <canvas id="{{ coin }}-chart-rsi"></canvas>
-            </div>
-
-            <!-- MACD Panel -->
-            <div class="macd-container">
-              <canvas id="{{ coin }}-chart-macd"></canvas>
+              <canvas id="{{ coin }}-chart"></canvas>
             </div>
 
             <div class="text-center mt-4">
-              <span id="{{ coin }}-signal" class="signal-badge bg-dark">Analyzing...</span>
+              <span id="{{ coin }}-signal" class="signal-badge bg-dark">Loading Signal...</span>
             </div>
 
             <div class="text-center mt-4">
-              <a href="https://www.tradingview.com/symbols/{{ coin }}USDT/" target="_blank"
-                 class="btn btn-lg px-5" style="background: linear-gradient(45deg, #00ff9d, #00c3ff); color: black; font-weight: bold;">
-                Open on TradingView
+              <a href="https://www.tradingview.com/symbols/{{ coin }}USD/" target="_blank"
+                 class="btn btn-outline-primary btn-lg px-5">
+                Full Chart on TradingView
               </a>
             </div>
           </div>
@@ -174,91 +176,76 @@
       {% endfor %}
     </div>
 
-    <!-- Dashboard -->
+    <!-- Dashboard Table -->
     <div class="card mt-5">
       <div class="card-body">
-        <h3 class="text-center mb-4">Real-Time Signal Dashboard</h3>
+        <h3 class="text-center mb-4">Live Signal Dashboard</h3>
         <div class="table-responsive">
-          <table class="table table-hover">
+          <table class="table table-hover align-middle">
             <thead>
               <tr>
                 <th>Coin</th>
                 <th>Price</th>
-                <th>24h Δ</th>
+                <th>24h %</th>
                 <th>Signal</th>
                 <th>Confidence</th>
-                <th>Triggers</th>
+                <th>Key Reasons</th>
               </tr>
             </thead>
             <tbody id="dashboard"></tbody>
           </table>
         </div>
+
         <div class="text-center mt-4">
-          <h5>Fear & Greed: <span id="fg" class="fw-bold">—</span></h5>
+          <h5>
+            Fear & Greed Index:
+            <span id="fg" class="fw-bold">—</span>
+          </h5>
         </div>
-        <p class="text-center text-muted" id="last-update">Connecting...</p>
+        <p class="text-center mt-3" id="last-update">Connecting...</p>
       </div>
     </div>
   </div>
 
   <script>
-    const charts = { price: {}, rsi: {}, macd: {} };
-    const lastPrices = {};
-    const lastSignals = {};
+    const charts = {};
+    let lastPrices = {};
+    let lastSignals = {};
 
-    // Bollinger Bands
-    function bollingerBands(prices, period = 20, stdDev = 2) {
-      if (prices.length < period) return { upper: [], middle: [], lower: [] };
-      const upper = [], middle = [], lower = [];
-      for (let i = period - 1; i < prices.length; i++) {
-        const slice = prices.slice(i - period + 1, i + 1);
-        const avg = slice.reduce((a, b) => a + b, 0) / period;
-        const std = Math.sqrt(slice.map(x => Math.pow(x - avg, 2)).reduce((a, b) => a + b, 0) / period);
-        middle.push(avg);
-        upper.push(avg + stdDev * std);
-        lower.push(avg - stdDev * std);
-      }
-      return { upper, middle, lower };
-    }
-
-    // RSI
-    function calculateRSI(prices, period = 14) {
-      if (prices.length < period + 1) return [];
-      const rsi = [];
-      let gains = 0, losses = 0;
-      for (let i = 1; i < period; i++) {
-        const diff = prices[i] - prices[i - 1];
-        if (diff > 0) gains += diff;
-        else losses -= diff;
-      }
-      let avgGain = gains / period;
-      let avgLoss = losses / period;
-      for (let i = period; i < prices.length; i++) {
-        const diff = prices[i] - prices[i - 1];
-        const gain = diff > 0 ? diff : 0;
-        const loss = diff < 0 ? -diff : 0;
-        avgGain = (avgGain * (period - 1) + gain) / period;
-        avgLoss = (avgLoss * (period - 1) + loss) / period;
-        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-        rsi.push(100 - (100 / (1 + rs)));
-      }
-      return rsi;
-    }
-
-    // MACD
+    // MACD Calculation
     function calculateMACD(prices, fast = 12, slow = 26, signal = 9) {
-      const ema = (data, period) => data.map((_, i) => {
-        if (i < period - 1) return null;
-        const k = 2 / (period + 1);
-        let ema = data[i - period + 1];
-        for (let j = i - period + 2; j <= i; j++) ema = data[j] * k + ema * (1 - k);
-        return ema;
+      if (prices.length < slow + signal) return { macd: [], signal: [], histogram: [] };
+
+      const emaFast = prices.map((_, i) => {
+        if (i < fast - 1) return null;
+        const slice = prices.slice(Math.max(0, i - fast + 1), i + 1);
+        return slice.reduce((a, b) => a + b, 0) / slice.length;
       });
-      const emaFast = ema(prices, fast);
-      const emaSlow = ema(prices, slow);
-      const macdLine = prices.map((_, i) => emaFast[i] !== null && emaSlow[i] !== null ? emaFast[i] - emaSlow[i] : null);
-      const signalLine = ema(macdLine.filter(v => v !== null), signal);
-      const histogram = macdLine.map((v, i) => v !== null && signalLine[i] !== null ? v - signalLine[i] : null);
+      const emaSlow = prices.map((_, i) => {
+        if (i < slow - 1) return null;
+        const slice = prices.slice(Math.max(0, i - slow + 1), i + 1);
+        return slice.reduce((a, b) => a + b, 0) / slice.length;
+      });
+
+      const macdLine = [];
+      for (let i = 0; i < prices.length; i++) {
+        if (emaFast[i] !== null && emaSlow[i] !== null) {
+          macdLine.push(emaFast[i] - emaSlow[i]);
+        } else {
+          macdLine.push(null);
+        }
+      }
+
+      const signalLine = macdLine.map((_, i) => {
+        if (i < slow + signal - 2) return null;
+        const slice = macdLine.slice(i - signal + 1, i + 1).filter(v => v !== null);
+        return slice.length > 0 ? slice.reduce((a, b) => a + b, 0) / slice.length : null;
+      });
+
+      const histogram = macdLine.map((val, i) =>
+        val !== null && signalLine[i] !== null ? val - signalLine[i] : null
+      );
+
       return { macd: macdLine, signal: signalLine, histogram };
     }
 
@@ -268,159 +255,178 @@
         .then(data => {
           if (!data.dashboard) return;
 
-          // Dashboard Update
+          // Dashboard
           const tbody = document.getElementById('dashboard');
           tbody.innerHTML = '';
           data.dashboard.forEach(item => {
             const row = document.createElement('tr');
-            if (lastSignals[item.coin] !== item.signal) row.classList.add('table-success');
-            const color = item.change >= 0 ? '#39d353' : '#f85149';
+            const isNew = lastSignals[item.coin] !== item.signal;
+            if (isNew) row.classList.add('table-warning');
+
+            const changeColor = item.change >= 0 ? '#39d353' : '#f85149';
             row.innerHTML = `
               <td><strong>${item.coin}</strong></td>
               <td>$${item.price.toLocaleString(undefined, {maximumFractionDigits: 6})}</td>
-              <td style="color:${color}"><strong>${item.change >= 0 ? '+' : ''}${item.change}%</strong></td>
-              <td><strong class="${item.color_class}">${item.signal}</strong></td>
+              <td style="color:${changeColor}"><strong>${item.change >= 0 ? '+' : ''}${item.change}%</strong></td>
+              <td><span class="${item.color_class}">${item.signal}</span></td>
               <td><strong>${item.prob}%</strong></td>
-              <td><small>${item.reasons}</small></td>
+              <td><small>${item.reasons || 'Analyzing...'}</small></td>
             `;
             tbody.appendChild(row);
             lastSignals[item.coin] = item.signal;
 
-            // Price & Signal
+            // Update price in tab
             const priceEl = document.getElementById(`${item.coin}-price`);
             const newPriceStr = '$' + item.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 6});
             const oldPrice = lastPrices[item.coin] || item.price;
+
             if (priceEl.textContent !== newPriceStr) {
-              priceEl.className = `price-display ${item.price > oldPrice ? 'price-flash-up' : 'price-flash-down'}`;
+              const up = item.price > oldPrice;
+              priceEl.className = `price-display ${up ? 'price-flash-up' : 'price-flash-down'}`;
               setTimeout(() => priceEl.className = 'price-display', 800);
               priceEl.textContent = newPriceStr;
               lastPrices[item.coin] = item.price;
             }
-            document.getElementById(`${item.coin}-change`).innerHTML = `<span style="color:${color}">(${item.change >= 0 ? '+' : ''}${item.change.toFixed(2)}%)</span>`;
 
-            const sig = document.getElementById(`${item.coin}-signal`);
-            sig.textContent = `${item.signal} • ${item.prob}%`;
-            sig.style.background = item.signal.includes('BUY') ? 'rgba(0,255,157,0.25)' : item.signal.includes('SELL') ? 'rgba(248,81,73,0.25)' : 'rgba(150,150,150,0.3)';
-            sig.style.color = item.signal.includes('BUY') ? '#39d353' : item.signal.includes('SELL') ? '#f85149' : '#ffa657';
+            document.getElementById(`${item.coin}-change`).innerHTML =
+              `<span style="color:${changeColor}">(${item.change >= 0 ? '+' : ''}${item.change.toFixed(2)}%)</span>`;
+
+            const sigEl = document.getElementById(`${item.coin}-signal`);
+            sigEl.textContent = `${item.signal} • ${item.prob}%`;
+            sigEl.style.background = item.signal.includes('BUY') ? 'rgba(0,255,157,0.25)' :
+                                    item.signal.includes('SELL') ? 'rgba(248,81,73,0.25)' :
+                                    'rgba(150,150,150,0.25)';
+            sigEl.style.color = item.signal.includes('BUY') ? '#39d353' :
+                               item.signal.includes('SELL') ? '#f85149' : '#ffa657';
           });
 
-          document.getElementById('fg').innerHTML = `<strong style="color:${data.fg < 30 ? '#f85149' : data.fg > 70 ? '#39d353' : '#ffa657'}">${data.fg}/100</strong>`;
-          document.getElementById('last-update').textContent = `Live • ${new Date(data.timestamp).toLocaleString()}`;
+          // Fear & Greed
+          const fg = data.fg;
+          const fgText = fg < 25 ? "EXTREME FEAR" : fg < 45 ? "FEAR" : fg < 55 ? "NEUTRAL" : fg < 75 ? "GREED" : "EXTREME GREED";
+          const fgColor = fg < 25 ? '#f85149' : fg > 75 ? '#39d353' : '#ffa657';
+          document.getElementById('fg').innerHTML = `<strong style="color:${fgColor}">${fg}/100</strong> → ${fgText}`;
 
-          // Charts
+          document.getElementById('last-update').textContent =
+            `Live • Updated: ${new Date(data.timestamp).toLocaleString()}`;
+
+          // Charts with MACD
           Object.keys(data.chart_data).forEach(coin => {
             const cd = data.chart_data[coin];
-            const prices = cd.prices;
-            const labels = cd.labels;
+            const ctx = document.getElementById(`${coin}-chart`).getContext('2d');
 
-            // Bollinger Bands
-            const bb = bollingerBands(prices, 20, 2);
-            const bbUpper = new Array(prices.length - bb.upper.length).fill(null).concat(bb.upper);
-            const bbMiddle = new Array(prices.length - bb.middle.length).fill(null).concat(bb.middle);
-            const bbLower = new Array(prices.length - bb.lower.length).fill(null).concat(bb.lower);
+            const macdData = calculateMACD(cd.prices);
 
-            // RSI
-            const rsiValues = calculateRSI(prices);
-
-            // MACD
-            const macd = calculateMACD(prices);
-
-            // Price Chart
-            if (!charts.price[coin]) {
-              charts.price[coin] = new Chart(document.getElementById(`${coin}-chart-price`), {
+            if (!charts[coin]) {
+              charts[coin] = new Chart(ctx, {
                 type: 'line',
                 data: {
-                  labels,
+                  labels: cd.labels,
                   datasets: [
-                    { label: 'Price', data: prices, borderColor: '#00ff9d', backgroundColor: 'rgba(0,255,157,0.1)', borderWidth: 3, fill: true, tension: 0.2, pointRadius: 0 },
-                    { label: 'BB Upper', data: bbUpper, borderColor: '#58a6ff', borderWidth: 1.5, borderDash: [5, 5], pointRadius: 0 },
-                    { label: 'BB Middle', data: bbMiddle, borderColor: '#8b949e', borderWidth: 1, pointRadius: 0 },
-                    { label: 'BB Lower', data: bbLower, borderColor: '#58a6ff', borderWidth: 1.5, borderDash: [5, 5], pointRadius: 0 },
-                    { label: 'EMA 12', data: cd.ema_fast, borderColor: '#ffa657', borderWidth: 2, pointRadius: 0 },
-                    { label: 'EMA 26', data: cd.ema_slow, borderColor: '#bc8cff', borderWidth: 2, pointRadius: 0 },
                     {
-                      label: 'BB Fill',
-                      data: prices.map((p, i) => ({ x: i, y1: bbLower[i], y2: bbUpper[i] })),
-                      backgroundColor: 'rgba(88, 166, 255, 0.1)',
-                      type: 'line',
-                      fill: '+1',
+                      label: 'Price',
+                      data: cd.prices,
+                      borderColor: '#00ff9d',
+                      backgroundColor: 'rgba(0,255,157,0.1)',
+                      borderWidth: 3,
                       pointRadius: 0,
-                      borderWidth: 0
+                      tension: 0.25,
+                      fill: true
+                    },
+                    {
+                      label: 'EMA 12',
+                      data: cd.ema_fast,
+                      borderColor: '#ffa657',
+                      borderWidth: 2,
+                      pointRadius: 0
+                    },
+                    {
+                      label: 'EMA 26',
+                      data: cd.ema_slow,
+                      borderColor: '#bc8cff',
+                      borderWidth: 2,
+                      pointRadius: 0
+                    },
+                    {
+                      label: 'MACD',
+                      data: macdData.macd,
+                      borderColor: '#58a6ff',
+                      borderWidth: 2,
+                      pointRadius: 0,
+                      yAxisID: 'macd'
+                    },
+                    {
+                      label: 'Signal',
+                      data: macdData.signal,
+                      borderColor: '#f85149',
+                      borderWidth: 2,
+                      pointRadius: 0,
+                      yAxisID: 'macd'
+                    },
+                    {
+                      label: 'Histogram',
+                      data: macdData.histogram,
+                      type: 'bar',
+                      backgroundColor: ctx => {
+                        const i = ctx.dataIndex;
+                        const val = macdData.histogram[i];
+                        return val > 0 ? 'rgba(57, 211, 83, 0.6)' : 'rgba(248, 81, 73, 0.6)';
+                      },
+                      yAxisID: 'macd',
+                      barThickness: 4
                     }
                   ]
                 },
-                options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index' }, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { grid: { color: 'rgba(255,255,255,0.05)' } } }, animation: { duration: 0 }
-              });
-            } else {
-              const ch = charts.price[coin];
-              ch.data.labels = labels;
-              ch.data.datasets[0].data = prices;
-              ch.data.datasets[1].data = bbUpper;
-              ch.data.datasets[2].data = bbMiddle;
-              ch.data.datasets[3].data = bbLower;
-              ch.data.datasets[4].data = cd.ema_fast;
-              ch.data.datasets[5].data = cd.ema_slow;
-              ch.update('quiet');
-            }
-
-            // RSI Chart
-            if (!charts.rsi[coin]) {
-              charts.rsi[coin] = new Chart(document.getElementById(`${coin}-chart-rsi`), {
-                type: 'line',
-                data: {
-                  labels: labels.slice(-rsiValues.length),
-                  datasets: [
-                    { label: 'RSI', data: rsiValues, borderColor: '#ffa657', backgroundColor: 'rgba(255,166,87,0.2)', fill: true, tension: 0.3 },
-                    { label: 'Overbought', data: new Array(rsiValues.length).fill(70), borderColor: '#f85149', borderDash: [5,5], borderWidth: 1 },
-                    { label: 'Oversold', data: new Array(rsiValues.length).fill(30), borderColor: '#39d353', borderDash: [5,5], borderWidth: 1 }
-                  ]
-                },
                 options: {
                   responsive: true,
-                  plugins: { legend: { display: false } },
+                  maintainAspectRatio: false,
+                  interaction: { mode: 'index', intersect: false },
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                      callbacks: {
+                        label: ctx => {
+                          if (ctx.dataset.label === 'Histogram') return '';
+                          let label = ctx.dataset.label || '';
+                          if (label) label += ': ';
+                          label += '$' + ctx.parsed.y.toFixed(6);
+                          return label;
+                        }
+                      }
+                    }
+                  },
                   scales: {
-                    y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { stepSize: 10 } },
-                    x: { display: false }
-                  }
+                    x: { display: false },
+                    y: {
+                      grid: { color: 'rgba(255,255,255,0.05)' },
+                      ticks: { color: '#8b949e' }
+                    },
+                    macd: {
+                      position: 'right',
+                      type: 'linear',
+                      grid: { display: false },
+                      ticks: { color: '#58a6ff', callback: v => v.toFixed(4) }
+                    }
+                  },
+                  animation: { duration: 0 }
                 }
               });
             } else {
-              const ch = charts.rsi[coin];
-              ch.data.labels = labels.slice(-rsiValues.length);
-              ch.data.datasets[0].data = rsiValues;
-              ch.update('quiet');
-            }
-
-            // MACD Chart
-            if (!charts.macd[coin]) {
-              charts.macd[coin] = new Chart(document.getElementById(`${coin}-chart-macd`), {
-                type: 'bar',
-                data: {
-                  labels,
-                  datasets: [
-                    { label: 'Histogram', data: macd.histogram, type: 'bar', backgroundColor: ctx => macd.histogram[ctx.dataIndex] > 0 ? 'rgba(57,211,83,0.7)' : 'rgba(248,81,73,0.7)' },
-                    { label: 'MACD', data: macd.macd, borderColor: '#58a6ff', borderWidth: 2, pointRadius: 0 },
-                    { label: 'Signal', data: macd.signal, borderColor: '#f85149', borderWidth: 2, pointRadius: 0 }
-                  ]
-                },
-                options: {
-                  responsive: true,
-                  plugins: { legend: { display: false } },
-                  scales: { x: { display: false }, y: { grid: { display: false } } }
-                }
-              });
-            } else {
-              const ch = charts.macd[coin];
-              ch.data.labels = labels;
-              ch.data.datasets[0].data = macd.histogram;
-              ch.data.datasets[1].data = macd.macd;
-              ch.data.datasets[2].data = macd.signal;
-              ch.update('quiet');
+              const chart = charts[coin];
+              chart.data.labels = cd.labels;
+              chart.data.datasets[0].data = cd.prices;
+              chart.data.datasets[1].data = cd.ema_fast;
+              chart.data.datasets[2].data = cd.ema_slow;
+              chart.data.datasets[3].data = macdData.macd;
+              chart.data.datasets[4].data = macdData.signal;
+              chart.data.datasets[5].data = macdData.histogram;
+              chart.update('quiet');
             }
           });
-        });
+        })
+        .catch(err => console.error("Fetch error:", err));
     }
 
+    // Update every 3 seconds
     setInterval(updateAll, 3000);
     updateAll();
   </script>
