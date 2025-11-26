@@ -153,7 +153,7 @@ def predict_signal(coin_data):
     elif score <= -65:
         return "STRONG SELL", prob, "text-danger", reasons  # Red
     elif score <= -35:
-        return "Bearish", prob, "text-purple", reasons  # Magenta (custom)
+        return "Bearish", prob, "text-purple", reasons  # Magenta
     else:
         return "Neutral", 25, "text-warning", reasons  # Yellow
 
