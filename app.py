@@ -9,11 +9,6 @@ import numpy as np
 import requests
 import pandas as pd
 import threading  # For background data update
-from io import BytesIO
-import base64
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend
-import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
@@ -78,8 +73,8 @@ def rsi(prices, period=14):
     return 100 - (100 / (1 + rs))
 
 def ema(prices, period):
-    if len(prices) == 0: return 0
-    return pd.Series(prices).ewm(span=period, adjust=False).mean().iloc[-1]
+    if len(prices) == 0: return []
+    return pd.Series(prices).ewm(span=period, adjust=False).mean().tolist()
 
 def predict_signal(coin_data):
     score = 0
@@ -162,7 +157,7 @@ def update_data():
         prices, changes, volumes = get_prices()
         fg = get_fear_greed()
         dashboard = []
-        charts = {}
+        chart_data = {}
         for coin in COINS:
             price = prices.get(coin)
             if price is None:
@@ -210,26 +205,21 @@ def update_data():
                 'reasons': ', '.join(reasons[:2])
             })
 
-            # Generate chart as base64
-            fig, ax = plt.subplots(figsize=(10, 5))
-            fig.patch.set_facecolor('#0d1117')
-            ax.set_facecolor('#0d1117')
-            ax.plot(range(len(coin_data['prices_1m'])), coin_data['prices_1m'], '#00ff88', lw=2.5)
-            if len(coin_data['prices_1m']) > 30:
-                ax.plot(range(len(coin_data['prices_1m'])), pd.Series(coin_data['prices_1m']).ewm(span=12).mean(), '#ffaa00', alpha=0.8)
-                ax.plot(range(len(coin_data['prices_1m'])), pd.Series(coin_data['prices_1m']).ewm(span=26).mean(), '#ff00ff', alpha=0.8)
-            ax.set_title(f"{coin} • ${price:,.0f if price else 'N/A'}", color='white')
-            ax.tick_params(colors='white')
-            ax.grid(True, alpha=0.2)
-            buf = BytesIO()
-            fig.savefig(buf, format="png", dpi=200, facecolor='#0d1117')
-            buf.seek(0)
-            charts[coin] = base64.b64encode(buf.getvalue()).decode('utf-8')
-            plt.close(fig)
+            # Chart data
+            prices_1m = coin_data['prices_1m'][-100:]  # Last 100 for performance
+            labels = list(range(len(prices_1m)))
+            ema_fast = ema(prices_1m, 12)
+            ema_slow = ema(prices_1m, 26)
+            chart_data[coin] = {
+                'labels': labels,
+                'prices': prices_1m,
+                'ema_fast': ema_fast,
+                'ema_slow': ema_slow
+            }
 
         latest_data['dashboard'] = dashboard
         latest_data['fg'] = fg
-        latest_data['charts'] = charts
+        latest_data['chart_data'] = chart_data
         latest_data['timestamp'] = datetime.datetime.now().isoformat()
 
         if SAVE_LOGS:
