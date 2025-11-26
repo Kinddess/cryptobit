@@ -59,7 +59,7 @@ Signals are based on technical indicators and sentiment — **not financial advi
 Always do your own research and never risk more than you can afford to lose.
 
 ### Credits
-Built with love by [Your Name]  
+Built with love by kinddess 
 Powered by CoinGecko & Alternative.me APIs  
 Design inspired by professional trading terminals
 
